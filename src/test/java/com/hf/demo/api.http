@@ -1,6 +1,28 @@
-POST http://localhost:8080/hello/add
+GET http://localhost:8080/todos
+
+###
+
+POST http://localhost:8080/todos
 Content-Type: application/json
 
 {
-  "title": "from-idea"
+  "title": "test2"
 }
+
+###
+
+PUT http://localhost:8080/todos
+Content-Type: application/json
+
+{
+  "id": 2,
+  "title": "new-title"
+}
+
+###
+
+DELETE http://localhost:8080/todos/5
+
+###
+
+DELETE http://localhost:8080/todos?ids=2,4,5,6
