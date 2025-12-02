@@ -1,4 +1,4 @@
-package com.hf.demo.common;
+package com.hf.demo.domain.vo;
 
 import lombok.Builder;
 import lombok.Data;

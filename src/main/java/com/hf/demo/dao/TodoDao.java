@@ -1,6 +1,6 @@
 package com.hf.demo.dao;
 
-import com.hf.demo.dto.Todo;
+import com.hf.demo.domain.dto.Todo;
 import jakarta.annotation.Resource;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.namedparam.BeanPropertySqlParameterSource;

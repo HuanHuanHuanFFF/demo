@@ -1,7 +1,9 @@
 package com.hf.demo.controller;
 
-import com.hf.demo.common.Result;
-import com.hf.demo.dto.Todo;
+import com.hf.demo.domain.dto.PageDTO;
+import com.hf.demo.domain.query.TodoPageQuery;
+import com.hf.demo.domain.vo.Result;
+import com.hf.demo.domain.dto.Todo;
 import com.hf.demo.service.TodoService;
 import jakarta.annotation.Resource;
 import jakarta.validation.constraints.Min;
@@ -28,9 +30,14 @@ public class TodoController {
         return Result.ok(map);
     }
 
-    @GetMapping
+    @GetMapping("/all")
     public Result<List<Todo>> listTodos() {
         return Result.ok(todoService.listTodos());
+    }
+
+    @GetMapping
+    public Result<PageDTO<Todo>> pageTodos(@Validated TodoPageQuery query) {
+        return Result.ok(todoService.pageTodos(query));
     }
 
     @PostMapping
