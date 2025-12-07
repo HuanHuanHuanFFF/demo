@@ -39,6 +39,8 @@ public class TodoServiceImpl implements TodoService {
         } else {
             wrapper.orderByDesc(column);
         }
+        if (query.getTitle() != null && !query.getTitle().isEmpty())
+            wrapper.like("title", query.getTitle());
         Page<Todo> result = todoMapper.selectPage(page, wrapper);
         return PageDTO.create(result);
     }

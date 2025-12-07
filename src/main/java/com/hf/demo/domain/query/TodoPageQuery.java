@@ -8,6 +8,7 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 @Data
 public class TodoPageQuery extends PageQuery {
+    private String title;
     private TodoSortBy sortBy = TodoSortBy.CREATED_TIME;
     private SortDir sortDir = SortDir.DESC;
 }
