@@ -6,7 +6,7 @@ POST http://localhost:8080/todos
 Content-Type: application/json
 
 {
-  "title": "testttt"
+  "title": "Redis测试1"
 }
 
 ###
@@ -25,7 +25,7 @@ DELETE http://localhost:8080/todos/5
 
 ###
 
-DELETE http://localhost:8080/todos?ids=2,4,5,6
+DELETE http://localhost:8080/todos?ids=2,4,5,9
 
 ###
 GET http://localhost:8080/todos?pageIndex=1&pageSize=10&sortBy=CREATED_TIME&sortDir=DESC
@@ -33,3 +33,35 @@ GET http://localhost:8080/todos?pageIndex=1&pageSize=10&sortBy=CREATED_TIME&sort
 ###
 GET http://localhost:8080/todos?pageIndex=1&pageSize=10&sortBy=CREATED_TIME&sortDir=DESC&title=test
 Accept: application/json
+
+####
+http://localhost:8080/redis/ping
+
+###
+GET http://localhost:8080/todos/10
+
+
+###
+
+# 按 id 查询（测试缓存：连发两次看日志是否只查一次 DB）
+GET http://localhost:8080/todos/3
+
+###
+POST http://localhost:8080/todos
+Content-Type: application/json
+
+{
+  "title": "写一套 Redis 缓存 Demo"
+}
+
+###
+PUT http://localhost:8080/todos
+Content-Type: application/json
+
+{
+  "id": 1,
+  "title": "把 Redis 缓存 Demo 写完并自测通过"
+}
+
+###
+DELETE http://localhost:8080/todos/1

@@ -11,6 +11,8 @@ public interface TodoService {
 
     PageDTO<Todo> pageTodos(TodoPageQuery query);
 
+    Todo getById(Long id);
+
     void addTodo(Todo todo);
 
     void updateTodo(Todo todo);

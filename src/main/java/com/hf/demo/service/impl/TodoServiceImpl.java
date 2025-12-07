@@ -2,7 +2,9 @@ package com.hf.demo.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.hf.demo.dao.TodoDao;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hf.demo.domain.dto.PageDTO;
 import com.hf.demo.domain.dto.Todo;
 import com.hf.demo.domain.enums.SortDir;
@@ -11,26 +13,55 @@ import com.hf.demo.domain.vo.CodeStatus;
 import com.hf.demo.exception.BizException;
 import com.hf.demo.mapper.TodoMapper;
 import com.hf.demo.service.TodoService;
+import com.hf.demo.util.RandomUtils;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 
+@Slf4j
 @Service
 public class TodoServiceImpl implements TodoService {
     @Resource
-    private TodoDao todoDao;
+    private TodoMapper todoMapper;
 
     @Resource
-    private TodoMapper todoMapper;
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Resource
+    private ObjectMapper objectMapper;
+
+    private static final String TODO_CACHE_KEY_PREFIX = "todo:byId:";
+    private static final String NULL_VALUE = "NULL";
+    private static final long TODO_CACHE_TTL_SECONDS = 30 * 60;
+    private static final long TODO_CACHE_JITTER_SECONDS = 5 * 60;
+    private static final long NULL_CACHE_TTL_SECONDS = 60;
+    private static final String TODO_LIST_CACHE_KEY_PREFIX = "todo:list:";
+    private static final long TODO_LIST_CACHE_TTL_SECONDS = 3 * 60;
+    private static final long TODO_LIST_CACHE_JITTER_SECONDS = 2 * 60;
 
     @Override
     public List<Todo> listTodos() {
-        return todoDao.listTodos();
+        return todoMapper.selectList(null);
     }
 
     @Override
     public PageDTO<Todo> pageTodos(TodoPageQuery query) {
+        String title = query.getTitle() == null ? "" : query.getTitle();
+        String k = TODO_LIST_CACHE_KEY_PREFIX + query.getPageIndex() + "-" + query.getPageSize() + "-" + query.getSortBy() + "-" + query.getSortDir() + "-" + title;
+        String cache = stringRedisTemplate.opsForValue().get(k);
+        if (cache != null) {
+            try {
+                return objectMapper.readValue(cache, new TypeReference<PageDTO<Todo>>() {
+                });
+            } catch (JsonProcessingException e) {
+                log.warn("pageTodos:{}查询命中,但序反列化失败", query);
+            }
+        }
         Page<Todo> page = new Page<>(query.getPageIndex(), query.getPageSize());
         QueryWrapper<Todo> wrapper = new QueryWrapper<>();
         String column = query.getSortBy().getColumn();
@@ -39,31 +70,84 @@ public class TodoServiceImpl implements TodoService {
         } else {
             wrapper.orderByDesc(column);
         }
-        if (query.getTitle() != null && !query.getTitle().isEmpty())
-            wrapper.like("title", query.getTitle());
+        if (query.getTitle() != null && !query.getTitle().isEmpty()) wrapper.like("title", query.getTitle());
         Page<Todo> result = todoMapper.selectPage(page, wrapper);
-        return PageDTO.create(result);
+        PageDTO<Todo> pageDTO = PageDTO.create(result);
+        try {
+            String v = objectMapper.writeValueAsString(pageDTO);
+            stringRedisTemplate.opsForValue().set(k, v, Duration.ofSeconds(TODO_LIST_CACHE_TTL_SECONDS + RandomUtils.randomJitterSeconds(TODO_LIST_CACHE_JITTER_SECONDS)));
+        } catch (JsonProcessingException e) {
+            log.warn("pageTodos查询结果添加缓存失败", e);
+        }
+        return pageDTO;
+    }
+
+    @Override
+    public Todo getById(Long id) {
+        String k = TODO_CACHE_KEY_PREFIX + id;
+        String cache = stringRedisTemplate.opsForValue().get(k);
+        if (cache != null) {
+            if (NULL_VALUE.equals(cache)) return null;
+            try {
+                return objectMapper.readValue(cache, Todo.class);
+            } catch (JsonProcessingException e) {
+                log.warn("id:{}命中,但序反列化失败", id);
+            }
+        }
+        Todo todo = todoMapper.selectById(id);
+        if (todo == null) {
+            stringRedisTemplate.opsForValue().set(k, NULL_VALUE, Duration.ofSeconds(NULL_CACHE_TTL_SECONDS));
+            return null;
+        }
+        try {
+            String v = objectMapper.writeValueAsString(todo);
+            stringRedisTemplate.opsForValue().set(k, v, Duration.ofSeconds(TODO_CACHE_TTL_SECONDS + RandomUtils.randomJitterSeconds(TODO_CACHE_JITTER_SECONDS)));
+        } catch (JsonProcessingException e) {
+            log.warn("getById中Redis缓存设置失败");
+        }
+        return todo;
     }
 
     @Override
     public void addTodo(Todo todo) {
-        todoDao.addTodo(todo);
+        todo.setCreatedTime(LocalDateTime.now());
+        todoMapper.insert(todo);
+        String k = TODO_CACHE_KEY_PREFIX + todo.getId();
+        stringRedisTemplate.delete(k);
+        clearTodoListCache();
     }
 
     @Override
     public void updateTodo(Todo todo) {
-        int rows = todoDao.updateTodo(todo);
+        int rows = todoMapper.updateById(todo);
         if (rows == 0) throw new BizException(CodeStatus.NOT_FOUND);
+        String k = TODO_CACHE_KEY_PREFIX + todo.getId();
+        stringRedisTemplate.delete(k);
+        clearTodoListCache();
     }
 
     @Override
     public void deleteTodo(Long id) {
-        int rows = todoDao.deleteTodo(id);
+        int rows = todoMapper.deleteById(id);
         if (rows == 0) throw new BizException(CodeStatus.NOT_FOUND);
+        String k = TODO_CACHE_KEY_PREFIX + id;
+        stringRedisTemplate.delete(k);
+        clearTodoListCache();
     }
 
     @Override
     public int deleteTodos(List<Long> ids) {
-        return todoDao.deleteTodos(ids);
+        ids.forEach(id -> stringRedisTemplate.delete(TODO_CACHE_KEY_PREFIX + id));
+        int rows = todoMapper.deleteByIds(ids);
+        if (rows > 0) clearTodoListCache();
+        return rows;
+    }
+
+    private void clearTodoListCache() {
+        String pattern = TODO_LIST_CACHE_KEY_PREFIX + "*";
+        var keys = stringRedisTemplate.keys(pattern);
+        if (keys != null && !keys.isEmpty()) {
+            stringRedisTemplate.delete(keys);
+        }
     }
 }
