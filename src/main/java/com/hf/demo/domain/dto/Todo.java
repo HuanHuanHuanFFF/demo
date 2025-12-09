@@ -3,6 +3,7 @@ package com.hf.demo.domain.dto;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -18,4 +19,6 @@ public class Todo {
     @Size(max = 50, message = "标题长度不能超过50字符")
     String title;
     LocalDateTime createdTime;
+    @Version
+    private Integer version;
 }

@@ -51,17 +51,50 @@ POST http://localhost:8080/todos
 Content-Type: application/json
 
 {
+  "id": 1,
   "title": "写一套 Redis 缓存 Demo"
 }
 
 ###
-PUT http://localhost:8080/todos
+DELETE http://localhost:8080/todos/1
+
+###
+POST http://localhost:8080/todos
 Content-Type: application/json
+X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
 
 {
-  "id": 1,
-  "title": "把 Redis 缓存 Demo 写完并自测通过"
+  "title": "Learn optimistic locking"
 }
 
 ###
-DELETE http://localhost:8080/todos/1
+PUT http://localhost:8080/todos/1
+Content-Type: application/json
+
+{
+  "title": "Learn optimistic locking (updated)",
+  "version": 0
+}
+
+###
+GET http://localhost:8080/todos/1
+
+###
+PUT http://localhost:8080/todos/1
+Content-Type: application/json
+
+{
+  "title": "A updated this todo",
+  "version": 0
+}
+###
+PUT http://localhost:8080/todos/1
+Content-Type: application/json
+
+{
+  "title": "B updated this todo",
+  "version": 1
+}
+
+
+

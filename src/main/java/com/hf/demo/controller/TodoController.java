@@ -51,8 +51,9 @@ public class TodoController {
         return Result.ok("success");
     }
 
-    @PutMapping
-    public Result<String> updateTodo(@Validated @RequestBody Todo todo) {
+    @PutMapping("/{id}")
+    public Result<String> updateTodo(@PathVariable Long id, @Validated @RequestBody Todo todo) {
+        todo.setId(id);
         todoService.updateTodo(todo);
         return Result.ok("id为" + todo.getId() + "的数据更新成功");
     }

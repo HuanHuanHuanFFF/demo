@@ -43,6 +43,7 @@ public class TodoServiceImpl implements TodoService {
     private static final String TODO_LIST_CACHE_KEY_PREFIX = "todo:list:";
     private static final long TODO_LIST_CACHE_TTL_SECONDS = 3 * 60;
     private static final long TODO_LIST_CACHE_JITTER_SECONDS = 2 * 60;
+    private static final String TODO_LIST_VER_KEY = "todo:list:ver";
 
     @Override
     public List<Todo> listTodos() {
@@ -52,7 +53,8 @@ public class TodoServiceImpl implements TodoService {
     @Override
     public PageDTO<Todo> pageTodos(TodoPageQuery query) {
         String title = query.getTitle() == null ? "" : query.getTitle();
-        String k = TODO_LIST_CACHE_KEY_PREFIX + query.getPageIndex() + "-" + query.getPageSize() + "-" + query.getSortBy() + "-" + query.getSortDir() + "-" + title;
+        String ver = getListVersion();
+        String k = TODO_LIST_CACHE_KEY_PREFIX + "v" + ver + ":" + query.getPageIndex() + "-" + query.getPageSize() + "-" + query.getSortBy() + "-" + query.getSortDir() + "-" + title;
         String cache = stringRedisTemplate.opsForValue().get(k);
         if (cache != null) {
             try {
@@ -110,44 +112,58 @@ public class TodoServiceImpl implements TodoService {
 
     @Override
     public void addTodo(Todo todo) {
+        todo.setId(null);
         todo.setCreatedTime(LocalDateTime.now());
         todoMapper.insert(todo);
-        String k = TODO_CACHE_KEY_PREFIX + todo.getId();
-        stringRedisTemplate.delete(k);
-        clearTodoListCache();
+        deleteTodoCacheById(todo.getId());
+        stringRedisTemplate.opsForValue().increment(TODO_LIST_VER_KEY);
     }
 
     @Override
     public void updateTodo(Todo todo) {
         int rows = todoMapper.updateById(todo);
-        if (rows == 0) throw new BizException(CodeStatus.NOT_FOUND);
-        String k = TODO_CACHE_KEY_PREFIX + todo.getId();
-        stringRedisTemplate.delete(k);
-        clearTodoListCache();
+        if (rows == 0) throw new BizException(CodeStatus.UPDATE_CONFLICT, "数据已被其他请求修改或数据不存在");
+        deleteTodoCacheById(todo.getId());
+        stringRedisTemplate.opsForValue().increment(TODO_LIST_VER_KEY);
     }
 
     @Override
     public void deleteTodo(Long id) {
         int rows = todoMapper.deleteById(id);
         if (rows == 0) throw new BizException(CodeStatus.NOT_FOUND);
-        String k = TODO_CACHE_KEY_PREFIX + id;
-        stringRedisTemplate.delete(k);
-        clearTodoListCache();
+        deleteTodoCacheById(id);
+        stringRedisTemplate.opsForValue().increment(TODO_LIST_VER_KEY);
     }
 
     @Override
     public int deleteTodos(List<Long> ids) {
-        ids.forEach(id -> stringRedisTemplate.delete(TODO_CACHE_KEY_PREFIX + id));
         int rows = todoMapper.deleteByIds(ids);
-        if (rows > 0) clearTodoListCache();
+        if (rows > 0) {
+            ids.forEach(this::deleteTodoCacheById);
+            stringRedisTemplate.opsForValue().increment(TODO_LIST_VER_KEY);
+        }
         return rows;
     }
 
-    private void clearTodoListCache() {
-        String pattern = TODO_LIST_CACHE_KEY_PREFIX + "*";
-        var keys = stringRedisTemplate.keys(pattern);
-        if (keys != null && !keys.isEmpty()) {
-            stringRedisTemplate.delete(keys);
+    private void deleteTodoCacheById(Long id) {
+        String k = TODO_CACHE_KEY_PREFIX + id;
+        stringRedisTemplate.delete(k);
+    }
+
+//    private void clearTodoListCache() {
+//        String pattern = TODO_LIST_CACHE_KEY_PREFIX + "*";
+//        var keys = stringRedisTemplate.keys(pattern);
+//        if (keys != null && !keys.isEmpty()) {
+//            stringRedisTemplate.delete(keys);
+//        }
+//    }
+
+    private String getListVersion() {
+        String ver = stringRedisTemplate.opsForValue().get(TODO_LIST_VER_KEY);
+        if (ver == null) {
+            ver = "1";
+            stringRedisTemplate.opsForValue().set(TODO_LIST_VER_KEY, ver);
         }
+        return ver;
     }
 }
