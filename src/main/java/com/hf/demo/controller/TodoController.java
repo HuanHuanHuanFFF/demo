@@ -9,9 +9,11 @@ import jakarta.annotation.Resource;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +23,13 @@ import java.util.Map;
 public class TodoController {
     @Resource
     private TodoService todoService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    private static final String ADD_CACHE_KEY_PREFIX = "todo:idem:";
+    public static final String ADD_CACHE_VALUE = "1";
+    private static final long ADD_CACHE_TTL_SECONDS = 3 * 60;
 
     @GetMapping("/hello")
     public Result<Map<String, String>> hello() {
@@ -46,8 +55,12 @@ public class TodoController {
     }
 
     @PostMapping
-    public Result<String> addTodo(@Validated @RequestBody Todo todo) {
+    public Result<String> addTodo(@RequestHeader("X-Idempotency-Key") String idempotencyKey, @Validated @RequestBody Todo todo) {
+        String k = ADD_CACHE_KEY_PREFIX + idempotencyKey;
+        String cache = stringRedisTemplate.opsForValue().get(k);
+        if (cache != null) return Result.ok("success");
         todoService.addTodo(todo);
+        stringRedisTemplate.opsForValue().set(k, ADD_CACHE_VALUE, Duration.ofSeconds(ADD_CACHE_TTL_SECONDS));
         return Result.ok("success");
     }
 

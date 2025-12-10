@@ -57,6 +57,7 @@ public class TodoServiceImpl implements TodoService {
         String k = TODO_LIST_CACHE_KEY_PREFIX + "v" + ver + ":" + query.getPageIndex() + "-" + query.getPageSize() + "-" + query.getSortBy() + "-" + query.getSortDir() + "-" + title;
         String cache = stringRedisTemplate.opsForValue().get(k);
         if (cache != null) {
+            log.info("CACHE_HIT: todo:list v{} page={} size={} sortBy={} sortDir={} title={}", ver, query.getPageIndex(), query.getPageSize(), query.getSortBy(), query.getSortDir(), title);
             try {
                 return objectMapper.readValue(cache, new TypeReference<PageDTO<Todo>>() {
                 });
@@ -64,6 +65,9 @@ public class TodoServiceImpl implements TodoService {
                 log.warn("pageTodos:{}查询命中,但序反列化失败", query);
             }
         }
+
+        log.info("CACHE_MISS: todo:list v{} page={} size={} sortBy={} sortDir={} title={}", ver, query.getPageIndex(), query.getPageSize(), query.getSortBy(), query.getSortDir(), title);
+
         Page<Todo> page = new Page<>(query.getPageIndex(), query.getPageSize());
         QueryWrapper<Todo> wrapper = new QueryWrapper<>();
         String column = query.getSortBy().getColumn();
@@ -89,6 +93,7 @@ public class TodoServiceImpl implements TodoService {
         String k = TODO_CACHE_KEY_PREFIX + id;
         String cache = stringRedisTemplate.opsForValue().get(k);
         if (cache != null) {
+            log.info("CACHE_HIT: todo:{}", id);
             if (NULL_VALUE.equals(cache)) return null;
             try {
                 return objectMapper.readValue(cache, Todo.class);
@@ -96,6 +101,9 @@ public class TodoServiceImpl implements TodoService {
                 log.warn("id:{}命中,但序反列化失败", id);
             }
         }
+
+        log.info("CACHE_MISS: todo:{}", id);
+
         Todo todo = todoMapper.selectById(id);
         if (todo == null) {
             stringRedisTemplate.opsForValue().set(k, NULL_VALUE, Duration.ofSeconds(NULL_CACHE_TTL_SECONDS));
