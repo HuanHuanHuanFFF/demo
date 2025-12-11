@@ -12,6 +12,7 @@ import com.hf.demo.domain.query.TodoPageQuery;
 import com.hf.demo.domain.vo.CodeStatus;
 import com.hf.demo.exception.BizException;
 import com.hf.demo.mapper.TodoMapper;
+import com.hf.demo.service.TodoCacheAsyncService;
 import com.hf.demo.service.TodoService;
 import com.hf.demo.util.RandomUtils;
 import jakarta.annotation.Resource;
@@ -34,6 +35,9 @@ public class TodoServiceImpl implements TodoService {
 
     @Resource
     private ObjectMapper objectMapper;
+
+    @Resource
+    private TodoCacheAsyncService todoCacheAsyncService;
 
     private static final String TODO_CACHE_KEY_PREFIX = "todo:byId:";
     private static final String NULL_VALUE = "NULL";
@@ -123,7 +127,7 @@ public class TodoServiceImpl implements TodoService {
         todo.setId(null);
         todo.setCreatedTime(LocalDateTime.now());
         todoMapper.insert(todo);
-        deleteTodoCacheById(todo.getId());
+        deleteTodoCacheByIdWithDelay(todo.getId());
         stringRedisTemplate.opsForValue().increment(TODO_LIST_VER_KEY);
     }
 
@@ -131,7 +135,7 @@ public class TodoServiceImpl implements TodoService {
     public void updateTodo(Todo todo) {
         int rows = todoMapper.updateById(todo);
         if (rows == 0) throw new BizException(CodeStatus.UPDATE_CONFLICT, "数据已被其他请求修改或数据不存在");
-        deleteTodoCacheById(todo.getId());
+        deleteTodoCacheByIdWithDelay(todo.getId());
         stringRedisTemplate.opsForValue().increment(TODO_LIST_VER_KEY);
     }
 
@@ -139,7 +143,7 @@ public class TodoServiceImpl implements TodoService {
     public void deleteTodo(Long id) {
         int rows = todoMapper.deleteById(id);
         if (rows == 0) throw new BizException(CodeStatus.NOT_FOUND);
-        deleteTodoCacheById(id);
+        deleteTodoCacheByIdWithDelay(id);
         stringRedisTemplate.opsForValue().increment(TODO_LIST_VER_KEY);
     }
 
@@ -147,24 +151,17 @@ public class TodoServiceImpl implements TodoService {
     public int deleteTodos(List<Long> ids) {
         int rows = todoMapper.deleteByIds(ids);
         if (rows > 0) {
-            ids.forEach(this::deleteTodoCacheById);
+            ids.forEach(this::deleteTodoCacheByIdWithDelay);
             stringRedisTemplate.opsForValue().increment(TODO_LIST_VER_KEY);
         }
         return rows;
     }
 
-    private void deleteTodoCacheById(Long id) {
+    private void deleteTodoCacheByIdWithDelay(Long id) {
         String k = TODO_CACHE_KEY_PREFIX + id;
         stringRedisTemplate.delete(k);
+        todoCacheAsyncService.deleteTodoCacheByIdWithDelay(id);
     }
-
-//    private void clearTodoListCache() {
-//        String pattern = TODO_LIST_CACHE_KEY_PREFIX + "*";
-//        var keys = stringRedisTemplate.keys(pattern);
-//        if (keys != null && !keys.isEmpty()) {
-//            stringRedisTemplate.delete(keys);
-//        }
-//    }
 
     private String getListVersion() {
         String ver = stringRedisTemplate.opsForValue().get(TODO_LIST_VER_KEY);
