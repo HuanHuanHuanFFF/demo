@@ -4,6 +4,7 @@ GET http://localhost:8080/todos/17
 
 POST http://localhost:8080/todos
 Content-Type: application/json
+X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655441111
 
 {
   "title": "Redis测试1"

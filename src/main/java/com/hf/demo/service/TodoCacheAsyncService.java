@@ -15,7 +15,7 @@ public class TodoCacheAsyncService {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-    @Async
+    @Async("commonExecutor")
     public void deleteTodoCacheByIdWithDelay(Long id) {
         String k = TODO_CACHE_KEY_PREFIX + id;
         try {
@@ -23,6 +23,8 @@ public class TodoCacheAsyncService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        String name = Thread.currentThread().getName();
+        log.info("当前执行双删的线程是: {}", name);
         stringRedisTemplate.delete(k);
         log.info("delay double delete todo cache: {}", id);
     }

@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # --- 1. MySQL 服务 ---
+  mysqldb:
+    image: mysql:8.0
+    container_name: todo-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root  # 数据库 root 密码
+      MYSQL_DATABASE: todo_db    # 自动创建的库名
+    ports:
+      - "3307:3306"              # 宿主机端口:容器端口
+    volumes:
+      # 挂载数据卷，确保重启容器数据不丢失
+      - db_data:/var/lib/mysql
+      # 挂载初始化脚本，第一次启动会自动执行！
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # --- 2. Redis 服务 ---
+  redis:
+    image: redis:alpine
+    container_name: todo-redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # --- 3. Spring Boot 应用 ---
+  todo-app:
+    build: .                      # 使用当前目录的 Dockerfile 构建
+    container_name: todo-app
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:                   # 确保 DB 和 Redis 先启动
+      - mysqldb
+      - redis
+    environment:
+      # 显式指定 Redis 地址
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      # 显式指定 MySQL 地址
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysqldb:3306/todo_db?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf-8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+
+# 定义数据卷
+volumes:
+  db_data:
