@@ -98,5 +98,36 @@ Content-Type: application/json
   "version": 1
 }
 
+### 0. 注册新用户 (初始化数据)
+POST http://localhost:8080/auth/register
+Content-Type: application/json
 
+{
+  "username": "test",
+  "password": "123"
+}
 
+### 1. 登录成功测试 (验证正常逻辑)
+POST http://localhost:8080/auth/login
+Content-Type: application/json
+
+{
+  "username": "test",
+  "password": "123"
+}
+
+### 2. 登录失败测试 (验证全局异常捕获)
+# 这里故意填错密码，验证是否返回 "用户名或密码错误" 且格式为 Result JSON
+POST http://localhost:8080/auth/login
+Content-Type: application/json
+
+{
+  "username": "test",
+  "password": "wrong_password_888"
+}
+
+### 3. 携带 Token 访问受保护接口 (测试 JWT)
+GET http://localhost:8080/todos/all
+Content-Type: application/json
+# 注意：Bearer 后面必须要有一个空格！(这里粘贴登录成功后的token)
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0IiwiaWF0IjoxNzY1NzIyNjk2LCJleHAiOjE3NjU4MDkwOTZ9._7lI_sghwcdqGcSuZwOMsZspf-gBrI3wrSx32HYgghA

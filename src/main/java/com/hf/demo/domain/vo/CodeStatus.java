@@ -8,6 +8,8 @@ public enum CodeStatus {
     UPDATE_CONFLICT(409, "数据已被其他请求修改,请刷新后重试"),
     PARAM_ERROR(1001, "参数错误"),
     NOT_FOUND(1004, "数据不存在"),
+
+    NO_PERMISSION(1003, "权限不足"),
     SERVER_ERROR(500, "服务内部错误");
 
     private final int code;

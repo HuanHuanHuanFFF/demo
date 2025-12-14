@@ -5,6 +5,9 @@ import com.hf.demo.domain.vo.Result;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -16,8 +19,8 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     @ExceptionHandler(BizException.class)
-    public Result<Void> handleBiz(BizException e) {
-        return Result.fail(e.getCodeStatus());
+    public Result<String> handleBiz(BizException e) {
+        return Result.fail(e.getCodeStatus(), e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -50,6 +53,19 @@ public class GlobalExceptionHandler {
     public Result<String> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
         log.error("参数类型错误: {}", e.getMessage());
         return Result.fail(CodeStatus.PARAM_ERROR, "请求参数不合法");
+    }
+
+    @ExceptionHandler({BadCredentialsException.class, InternalAuthenticationServiceException.class})
+    public Result<String> handleAuthException(Exception e) {
+        log.error("认证失败: {}", e.getMessage());
+        return Result.fail(CodeStatus.PARAM_ERROR, "用户名或密码错误");
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public Result<String> handleAccessDeniedException(AccessDeniedException e) {
+        log.error("权限不足: {}", e.getMessage());
+        // 如果你的 CodeStatus 里有 NO_PERMISSION 最好，没有就先用 SERVER_ERROR 或自定义一个
+        return Result.fail(CodeStatus.SERVER_ERROR, "权限不足，请联系管理员");
     }
 
     @ExceptionHandler(Exception.class)
