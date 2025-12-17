@@ -130,4 +130,23 @@ Content-Type: application/json
 GET http://localhost:8080/todos/all
 Content-Type: application/json
 # 注意：Bearer 后面必须要有一个空格！(这里粘贴登录成功后的token)
-Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0IiwiaWF0IjoxNzY1NzIyNjk2LCJleHAiOjE3NjU4MDkwOTZ9._7lI_sghwcdqGcSuZwOMsZspf-gBrI3wrSx32HYgghA
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0IiwiaWF0IjoxNzY1OTgzNTg5LCJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY1OTg0NDg5fQ.39wMnLjzfklNESxTNl-g9tnCZh5Or-rS94NvFjDWQkA
+
+### 1) Refresh：用 refreshToken 换新 accessToken
+@host = http://localhost:8080
+@refreshToken = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0IiwianRpIjoiYmQzYWM2ZDctYTAzOC00NGJlLThmY2EtNDgxOWFiZjZkYjJhIiwidG9rZW5fdHlwZSI6InJlZnJlc2giLCJpYXQiOjE3NjU5OTI2NzQsImV4cCI6MTc2NzIwMjI3NH0.nA2CQQ5FxJbdZ3Ai_lgUSIEYcpdfPO7Z9tfyinWGXPs
+
+POST {{host}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### 2) Logout：撤销 refreshToken（删 Redis refresh:<uuid>）
+POST {{host}}/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}

@@ -4,13 +4,13 @@ import lombok.Getter;
 
 @Getter
 public enum CodeStatus {
-    SUCCESS(200, "ok"),
-    UPDATE_CONFLICT(409, "数据已被其他请求修改,请刷新后重试"),
+    SUCCESS(0, "ok"),
     PARAM_ERROR(1001, "参数错误"),
-    NOT_FOUND(1004, "数据不存在"),
-
+    UNAUTHORIZED(1002, "未登录或登录已过期"),
     NO_PERMISSION(1003, "权限不足"),
-    SERVER_ERROR(500, "服务内部错误");
+    NOT_FOUND(1004, "数据不存在"),
+    UPDATE_CONFLICT(1005, "数据已被其他请求修改,请刷新后重试"),
+    SERVER_ERROR(2000, "服务内部错误");
 
     private final int code;
     private final String msg;

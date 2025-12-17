@@ -3,14 +3,22 @@ package com.hf.demo.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.hf.demo.domain.SysUser;
 import com.hf.demo.domain.vo.CodeStatus;
+import com.hf.demo.domain.vo.TokenVO;
 import com.hf.demo.exception.BizException;
 import com.hf.demo.mapper.SysUserMapper;
 import com.hf.demo.util.JwtUtils;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import java.util.Collections;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class AuthService {
@@ -26,6 +34,15 @@ public class AuthService {
 
     @Resource
     private JwtUtils jwtUtils;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Value("${jwt.refresh-expiration-ms}")
+    private long refreshExpirationMs;
+
+    @Value("${jwt.refresh-key-prefix}")
+    private String refreshKeyPrefix;
 
     public void register(String username, String password) {
         // 1. 检查用户名是否已存在 (防止重复注册报错)
@@ -45,7 +62,7 @@ public class AuthService {
         userMapper.insert(user);
     }
 
-    public String login(String username, String password) {
+    public TokenVO login(String username, String password) {
         // 1. 用户验证
         // 这一步会自动调用刚才写的 UserDetailsServiceImpl.loadUserByUsername
         // 如果密码不对，这里会直接抛出 BadCredentialsException
@@ -53,7 +70,55 @@ public class AuthService {
                 new UsernamePasswordAuthenticationToken(username, password)
         );
 
-        // 2. 验证通过，生成 Token
-        return jwtUtils.generateToken(username);
+        return generateTokenVO(username);
+    }
+
+
+    public TokenVO refresh(String refreshToken) {
+        if (!jwtUtils.validateToken(refreshToken))
+            throw new BizException(CodeStatus.UNAUTHORIZED, "refresh无效");
+
+        String username = jwtUtils.extractUsername(refreshToken);
+        String refreshId = jwtUtils.extractRefreshId(refreshToken);
+
+        String key = refreshKeyPrefix + refreshId;
+
+        Long consumed = stringRedisTemplate.execute(
+                REFRESH_CONSUME_SCRIPT,
+                Collections.singletonList(key)
+        );
+        if (consumed == null || consumed != 1L)
+            throw new BizException(CodeStatus.UNAUTHORIZED, "refresh无效");
+
+        return generateTokenVO(username);
+    }
+
+    private TokenVO generateTokenVO(String username) {
+        String newAccessToken = jwtUtils.generateAccessToken(username);
+        String newRefreshId = UUID.randomUUID().toString();
+        String newRefreshToken = jwtUtils.generateRefreshToken(username, newRefreshId);
+        stringRedisTemplate.opsForValue().set(
+                refreshKeyPrefix + newRefreshId,
+                username,
+                refreshExpirationMs,
+                TimeUnit.MILLISECONDS
+        );
+        return new TokenVO(newAccessToken, newRefreshToken);
+    }
+
+    private static final DefaultRedisScript<Long> REFRESH_CONSUME_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('EXISTS', KEYS[1]) == 1 then " +
+                    "  redis.call('DEL', KEYS[1]); " +
+                    "  return 1; " +
+                    "else " +
+                    "  return 0; " +
+                    "end",
+            Long.class
+    );
+
+    public void logout(String refreshToken) {
+        if (!jwtUtils.validateToken(refreshToken)) return;
+        String refreshId = jwtUtils.extractRefreshId(refreshToken);
+        stringRedisTemplate.delete(refreshKeyPrefix + refreshId);
     }
 }
