@@ -1,20 +1,33 @@
 # JWT_Access_vs_Refresh
 
 ## TL;DR
-- access 用于业务访问，短 TTL。
-- refresh 用于续期/登出，长 TTL。
-- refresh 不应被业务接口接受。
+- access：业务访问用，短 TTL；refresh：续期/登出用，长 TTL。
+- refresh 不应被业务接口接受，避免权限边界被打破。
+- 设计目标：体验（免频繁登录）与安全（可撤销、缩窗口）同时满足。
 
 ## 核心概念
-- access TTL 建议 5-15 分钟；refresh TTL 7-30 天（按风险调）。
-- refresh 只能用于 refresh/logout，避免权限扩大。
-- 服务端可通过 Redis 控制 refresh 撤销。
+| 维度   | access       | refresh           |
+| ---- | ------------ | ----------------- |
+| 职责   | 访问业务接口       | 换 access / logout |
+| TTL  | 10–30min（建议） | 7–30d（建议）         |
+| 风险   | 泄露窗口短        | 泄露窗口长（必须可撤销）      |
+| 存储   | 内存/短期存储      | 更谨慎（尽量安全存储）       |
+| 接口使用 | 绝大多数业务接口     | 仅 refresh/logout  |
+
+- 为什么这样设计：把“访问权限”与“续期能力”拆开，业务面只接受 access，refresh 只走少数专用接口。
 
 ## 常见追问
-- Q: refresh 能不能直接访问业务？/ A: 不能，必须只用于刷新或登出。 → [[JWT_Filter_Only_Access_Allows_Biz]]
-- Q: access 太短会怎样？/ A: 需要更频繁刷新，但风险更低。 → [[JWT_Refresh_Rotation]]
-- Q: refresh 为什么要配 Redis？/ A: 便于撤销，降低泄露影响。 → [[JWT_Server_Side_Revocation_Redis]]
+- Q：为什么 refresh 不能访问业务接口？
+  - A：refresh 泄露代价更高，必须限制在少数专用接口。
+  - → [[JWT_Filter_And_Concurrency]]
+- Q：access TTL 该怎么选？
+  - A：在安全与刷新频率之间折中，一般 10–30min 足够。
+  - → [[JWT_AccessToken]]
+- Q：refresh TTL 该怎么选？
+  - A：按敏感度设 7–30d，并配合撤销与 rotation。
+  - → [[JWT_RefreshToken]]
 
 ## 关联链接
 - [[JWT_Why_Single_Token_Not_Enough]]
-- [[JWT_Server_Side_Revocation_Redis]]
+- [[JWT_RefreshToken]]
+- [[JWT_AccessToken]]

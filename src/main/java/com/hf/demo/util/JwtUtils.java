@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
+import java.util.List;
+import java.util.Objects;
 
 @Component
 public class JwtUtils {
@@ -34,11 +36,12 @@ public class JwtUtils {
     }
 
     // ====== accessToken ======
-    public String generateAccessToken(String username) {
+    public String generateAccessToken(String username, List<String> authCodes) {
         return Jwts.builder()
                 .setSubject(username)
                 .setIssuedAt(new Date())
                 .claim("token_type", "access")
+                .claim("auth", authCodes)
                 .setExpiration(new Date(System.currentTimeMillis() + accessExpirationMs))
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
@@ -59,6 +62,7 @@ public class JwtUtils {
     public String extractUsername(String token) {
         return extractClaims(token).getSubject();
     }
+
 
     // 从 refreshToken 解析 refreshId（jti）
     public String extractRefreshId(String token) {
@@ -85,5 +89,18 @@ public class JwtUtils {
     public String extractTokenType(String token) {
         Object v = extractClaims(token).get("token_type");
         return v == null ? null : v.toString();
+    }
+
+    public List<String> extractAuth(String token) {
+        Object v = extractClaims(token).get("auth");
+        if (v == null) return List.of();
+        if (v instanceof List<?> list) {
+            return list.stream()
+                    .filter(Objects::nonNull)
+                    .map(Object::toString)
+                    .toList();
+        }
+        // 兜底：如果被解析成单个字符串（不太常见），也能跑
+        return List.of(v.toString());
     }
 }

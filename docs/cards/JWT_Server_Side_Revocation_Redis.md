@@ -1,20 +1,27 @@
 # JWT_Server_Side_Revocation_Redis
 
 ## TL;DR
-- JWT 天生不可撤销，需服务端补一层。
-- Redis 保存 refresh key 让 logout/rotation 生效。
-- key 设计与 TTL 对齐，避免脏数据。
+- JWT 天生“发出后难撤销”，长 TTL 的 refresh 必须补服务端状态。
+- 用 Redis 保存 refresh key：`refresh:{uuid}`，TTL 与 refresh 对齐。
+- 错误码口径统一：减少前端分支与灰色状态。
 
 ## 核心概念
-- Key 设计：refresh:{uuid}，值可为空或用户标识。
-- TTL 与 refresh 有效期一致，过期自动清理。
-- 撤销即删除 key，保证 refresh 失效。
+- 为什么要 Redis：refresh 若不可撤销，logout/风控就失效。
+- Key 设计：`refresh:{uuid}`（uuid 来自 refresh 的 `jti/refreshId`）。
+- TTL 对齐：Redis key 的过期时间与 refresh 的 exp 一致，自动清理。
+- 错误口径统一（思路）：
+  - refresh 校验失败 / key 不存在 / 已撤销：统一返回同一类“需要重新登录或重新 refresh”的错误码。
 
 ## 常见追问
-- Q: 为什么只撤销 refresh？/ A: access 本就短命，主要控制 refresh。 → [[JWT_Access_vs_Refresh]]
-- Q: logout 怎么做？/ A: 删除 refresh key 即可。 → [[JWT_Logout_Behavior]]
-- Q: 并发刷新会有竞态吗？/ A: hasKey+delete 可能竞态，需原子化。 → [[JWT_Concurrency_Test_and_Atomicity]]
+- Q：logout 到底做什么才算“登出”？
+  - A：删除 refresh 对应的 Redis key，让后续 refresh 立即失败。
+- Q：rotation 和 Redis 的关系是什么？
+  - A：rotation 本质是“替换旧 refresh 的服务端状态”，需要 Redis 支撑。
+- Q：并发刷新为什么会提到原子性？
+  - A：如果校验与消费不是原子操作，极端并发下可能出现多次成功风险。
+  - → [[JWT_Filter_And_Concurrency]]
 
 ## 关联链接
-- [[JWT_Access_vs_Refresh]]
+- [[JWT_RefreshToken]]
 - [[JWT_Refresh_Rotation]]
+- [[JWT_Filter_And_Concurrency]]

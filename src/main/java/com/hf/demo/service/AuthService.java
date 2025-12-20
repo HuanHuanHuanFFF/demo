@@ -13,10 +13,14 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -58,7 +62,6 @@ public class AuthService {
         String encodedPassword = passwordEncoder.encode(password);
 
         user.setPassword(encodedPassword);
-        user.setRole("USER");
         userMapper.insert(user);
     }
 
@@ -66,11 +69,11 @@ public class AuthService {
         // 1. 用户验证
         // 这一步会自动调用刚才写的 UserDetailsServiceImpl.loadUserByUsername
         // 如果密码不对，这里会直接抛出 BadCredentialsException
-        authenticationManager.authenticate(
+        Authentication authenticate = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(username, password)
         );
-
-        return generateTokenVO(username);
+        List<String> authCodes = authenticate.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList();
+        return generateTokenVO(authenticate.getName(), authCodes);
     }
 
 
@@ -90,11 +93,13 @@ public class AuthService {
         if (consumed == null || consumed != 1L)
             throw new BizException(CodeStatus.UNAUTHORIZED, "refresh无效");
 
-        return generateTokenVO(username);
+        List<String> authCodes = loadAuthCodes(username);
+
+        return generateTokenVO(username, authCodes);
     }
 
-    private TokenVO generateTokenVO(String username) {
-        String newAccessToken = jwtUtils.generateAccessToken(username);
+    private TokenVO generateTokenVO(String username, List<String> authCodes) {
+        String newAccessToken = jwtUtils.generateAccessToken(username, authCodes);
         String newRefreshId = UUID.randomUUID().toString();
         String newRefreshToken = jwtUtils.generateRefreshToken(username, newRefreshId);
         stringRedisTemplate.opsForValue().set(
@@ -115,6 +120,19 @@ public class AuthService {
                     "end",
             Long.class
     );
+
+    private List<String> loadAuthCodes(String username) {
+        List<String> perms = userMapper.getPermissionsByUsername(username);
+        if (perms == null || perms.isEmpty()) return List.of();
+
+        return perms.stream()
+                .filter(s -> s != null && !s.isBlank())
+                .flatMap(s -> Arrays.stream(s.split(",")))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .distinct()
+                .toList();
+    }
 
     public void logout(String refreshToken) {
         if (!jwtUtils.validateToken(refreshToken)) return;

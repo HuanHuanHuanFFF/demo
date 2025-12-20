@@ -62,10 +62,11 @@ DELETE http://localhost:8080/todos/1
 ###
 POST http://localhost:8080/todos
 Content-Type: application/json
-X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+X-Idempotency-Key: 550e8400-e29b-41d4-a716-4466554400002
+Authorization: Bearer {{accessToken}}
 
 {
-  "title": "Learn1"
+  "title": "Learn2"
 }
 
 ###
@@ -103,8 +104,8 @@ POST http://localhost:8080/auth/register
 Content-Type: application/json
 
 {
-  "username": "test",
-  "password": "123"
+  "username": "admin1",
+  "password": "123456"
 }
 
 ### 1. 登录成功测试 (验证正常逻辑)
@@ -112,8 +113,8 @@ POST http://localhost:8080/auth/login
 Content-Type: application/json
 
 {
-  "username": "test",
-  "password": "123"
+  "username": "admin1",
+  "password": "123456"
 }
 
 ### 2. 登录失败测试 (验证全局异常捕获)
@@ -130,11 +131,12 @@ Content-Type: application/json
 GET http://localhost:8080/todos/all
 Content-Type: application/json
 # 注意：Bearer 后面必须要有一个空格！(这里粘贴登录成功后的token)
-Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0IiwiaWF0IjoxNzY1OTgzNTg5LCJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY1OTg0NDg5fQ.39wMnLjzfklNESxTNl-g9tnCZh5Or-rS94NvFjDWQkA
+Authorization: Bearer {{accessToken}}
 
 ### 1) Refresh：用 refreshToken 换新 accessToken
 @host = http://localhost:8080
-@refreshToken = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0IiwianRpIjoiYmQzYWM2ZDctYTAzOC00NGJlLThmY2EtNDgxOWFiZjZkYjJhIiwidG9rZW5fdHlwZSI6InJlZnJlc2giLCJpYXQiOjE3NjU5OTI2NzQsImV4cCI6MTc2NzIwMjI3NH0.nA2CQQ5FxJbdZ3Ai_lgUSIEYcpdfPO7Z9tfyinWGXPs
+@accessToken = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbjEiLCJpYXQiOjE3NjYyMjg5NzcsInRva2VuX3R5cGUiOiJhY2Nlc3MiLCJhdXRoIjpbInRvZG86cmVhZCIsInRvZG86d3JpdGUiXSwiZXhwIjoxNzY2MjI5ODc3fQ.8VNzn-G59J0iFV8mCtnJsIZnVfkklTi3xaxGfA76zpY
+@refreshToken = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbjEiLCJqdGkiOiJlN2UwMmQxNi1jMGUyLTRlMmEtYmYwYi0wZjczMDg4OTg4YjAiLCJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImlhdCI6MTc2NjIyOTI4NywiZXhwIjoxNzY3NDM4ODg3fQ.rmDb0i53Hhi68uiiUaCFzs18txWx-lzoh9AWPsR4nE8
 
 POST {{host}}/auth/refresh
 Content-Type: application/json

@@ -27,15 +27,27 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll()
+                        // 1) 认证相关：放行（按你真实路径调整）
+                        .requestMatchers("/auth/login", "/auth/register", "/auth/refresh", "/auth/logout").permitAll()
+
+                        // 2) RBAC：todos 读写权限
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/todos/**")
+                        .hasAuthority("todo:read")
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/todos/**")
+                        .hasAuthority("todo:write")
+                        .requestMatchers(org.springframework.http.HttpMethod.PUT, "/todos/**")
+                        .hasAuthority("todo:write")
+                        .requestMatchers(org.springframework.http.HttpMethod.DELETE, "/todos/**")
+                        .hasAuthority("todo:write")
+
+                        // 3) 其它接口：需要登录
                         .anyRequest().authenticated()
                 )
-
-                // 在尝试账号密码登录之前，先看看有没有 Token，有的话就直接认了
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
+
 
     /**
      * 密码加密器
