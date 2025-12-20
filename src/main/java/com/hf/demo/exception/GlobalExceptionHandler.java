@@ -68,6 +68,12 @@ public class GlobalExceptionHandler {
         return Result.fail(CodeStatus.SERVER_ERROR, "权限不足，请联系管理员");
     }
 
+    @ExceptionHandler(org.springframework.data.redis.RedisConnectionFailureException.class)
+    public Object handleRedisDown(org.springframework.data.redis.RedisConnectionFailureException e) {
+        log.error("[REDIS][DOWN] {}", e.getMessage());
+        return Result.fail(CodeStatus.TOO_MANY_REQUESTS);
+    }
+
     @ExceptionHandler(Exception.class)
     public Result<Void> handleException(Exception e) {
         log.error("unknown error", e);

@@ -1,26 +1,43 @@
 package com.hf.demo.web.filter;
 
+import com.hf.demo.util.IpUtils;
 import jakarta.annotation.Resource;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 
+@Slf4j
 @Component
-public class RateLimitFilter extends OncePerRequestFilter {
+public class TodoRateLimitFilter extends OncePerRequestFilter {
     @Resource
     StringRedisTemplate stringRedisTemplate;
 
     private static final int MAX_REQUESTS_PER_MINUTE = 60;
+    private static final long WINDOW_TTL_SECONDS = 70L;
     private static final String KEY_PREFIX = "rl:todos:ip:";
+
+    //Lua原子化
+    private static final DefaultRedisScript<Long> INCR_EXPIRE_SCRIPT = new DefaultRedisScript<>(
+            """
+                    local c = redis.call('INCR', KEYS[1])
+                    if c == 1 then
+                      redis.call('EXPIRE', KEYS[1], ARGV[1])
+                    end
+                    return c
+                    """,
+            Long.class
+    );
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -30,12 +47,22 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        String ip = getClientIp(request);
+        String ip = IpUtils.getClientIp(request);
         String minute = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
         String k = KEY_PREFIX + ip + ":" + minute;
-        Long cnt = stringRedisTemplate.opsForValue().increment(k);
-        if (cnt != null && cnt == 1) stringRedisTemplate.expire(k, Duration.ofSeconds(70));
-
+        Long cnt;
+        try {
+            // 一次执行：原子 INCR + EXPIRE(70s)
+            cnt = stringRedisTemplate.execute(
+                    INCR_EXPIRE_SCRIPT,
+                    Collections.singletonList(k),
+                    String.valueOf(WINDOW_TTL_SECONDS) // ARGV[1]
+            );
+        } catch (Exception e) {
+            log.error("[RATE_LIMIT][DEGRADED] redis unavailable, allow request todos. err={}", e.getMessage());
+            filterChain.doFilter(request, response);
+            return;
+        }
         if (cnt != null && cnt > MAX_REQUESTS_PER_MINUTE) {
             response.setStatus(429);
             response.setContentType("application/json;charset=UTF-8");
@@ -45,9 +72,4 @@ public class RateLimitFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private String getClientIp(HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) return xff.split(",")[0].trim();
-        return request.getRemoteAddr();
-    }
 }

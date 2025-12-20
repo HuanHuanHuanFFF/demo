@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Objects;
 
 @Component
-public class JwtUtils {
+public final class JwtUtils {
 
     @Value("${jwt.secret}")
     private String secret;
@@ -29,6 +29,9 @@ public class JwtUtils {
     private long refreshExpirationMs;
 
     private Key key;
+
+    private JwtUtils() {
+    }
 
     @PostConstruct
     public void init() {
