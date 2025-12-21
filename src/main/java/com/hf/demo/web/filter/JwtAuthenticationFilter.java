@@ -1,11 +1,13 @@
 package com.hf.demo.web.filter;
 
-import com.hf.demo.util.JwtUtils;
+import com.hf.demo.security.jwt.JwtUtils;
+import io.jsonwebtoken.Claims;
 import jakarta.annotation.Resource;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -16,6 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 
+@Slf4j
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -41,16 +44,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        Claims claims = jwtUtils.parseClaims(token);
         // 只允许 access token 走认证
-        String tokenType = jwtUtils.extractTokenType(token);
+        String tokenType = jwtUtils.extractTokenType(claims);
         if (!"access".equals(tokenType)) {
             filterChain.doFilter(request, response);
             return;
         }
 
         try {
-            String username = jwtUtils.extractUsername(token);
-            List<String> authCodes = jwtUtils.extractAuth(token);
+            String username = jwtUtils.extractUsername(claims);
+            List<String> authCodes = jwtUtils.extractAuth(claims);
 
             var authorities = authCodes.stream()
                     .filter(s -> s != null && !s.isBlank())
@@ -62,9 +66,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             UsernamePasswordAuthenticationToken authToken =
                     new UsernamePasswordAuthenticationToken(username, null, authorities);
             SecurityContextHolder.getContext().setAuthentication(authToken);
-
         } catch (Exception e) {
-            logger.error("无法设置用户认证: {}", e);
+            log.error("无法设置用户认证: {}", e.getMessage());
         }
         filterChain.doFilter(request, response);
     }

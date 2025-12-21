@@ -6,7 +6,9 @@ import com.hf.demo.domain.vo.CodeStatus;
 import com.hf.demo.domain.vo.TokenVO;
 import com.hf.demo.exception.BizException;
 import com.hf.demo.mapper.SysUserMapper;
-import com.hf.demo.util.JwtUtils;
+import com.hf.demo.security.guard.LoginFailGuard;
+import com.hf.demo.security.jwt.JwtUtils;
+import io.jsonwebtoken.Claims;
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -14,6 +16,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -35,6 +38,9 @@ public class AuthService {
 
     @Resource
     private AuthenticationManager authenticationManager;
+
+    @Resource
+    private LoginFailGuard loginFailGuard;
 
     @Resource
     private JwtUtils jwtUtils;
@@ -66,13 +72,25 @@ public class AuthService {
     }
 
     public TokenVO login(String username, String password) {
-        // 1. 用户验证
-        // 这一步会自动调用刚才写的 UserDetailsServiceImpl.loadUserByUsername
+        // 这一步会自动调用 UserDetailsServiceImpl.loadUserByUsername
         // 如果密码不对，这里会直接抛出 BadCredentialsException
-        Authentication authenticate = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(username, password)
-        );
-        List<String> authCodes = authenticate.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList();
+        if (loginFailGuard.isLocked(username)) throw new BizException(CodeStatus.LOGIN_FAILED);
+
+        Authentication authenticate;
+        try {
+            authenticate = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(username, password)
+            );
+        } catch (AuthenticationException e) {
+            Long failCnt = loginFailGuard.onFail(username);
+            throw new BizException(CodeStatus.LOGIN_FAILED);
+        }
+        loginFailGuard.onSuccess(username);
+        List<String> authCodes = authenticate
+                .getAuthorities()
+                .stream()
+                .map(GrantedAuthority::getAuthority)
+                .toList();
         return generateTokenVO(authenticate.getName(), authCodes);
     }
 
@@ -81,8 +99,9 @@ public class AuthService {
         if (!jwtUtils.validateToken(refreshToken))
             throw new BizException(CodeStatus.UNAUTHORIZED, "refresh无效");
 
-        String username = jwtUtils.extractUsername(refreshToken);
-        String refreshId = jwtUtils.extractRefreshId(refreshToken);
+        Claims claims = jwtUtils.parseClaims(refreshToken);
+        String username = jwtUtils.extractUsername(claims);
+        String refreshId = jwtUtils.extractRefreshId(claims);
 
         String key = refreshKeyPrefix + refreshId;
 

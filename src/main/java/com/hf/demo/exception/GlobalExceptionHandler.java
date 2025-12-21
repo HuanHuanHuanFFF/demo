@@ -5,6 +5,8 @@ import com.hf.demo.domain.vo.Result;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.RedisSystemException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.InternalAuthenticationServiceException;
@@ -58,7 +60,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({BadCredentialsException.class, InternalAuthenticationServiceException.class})
     public Result<String> handleAuthException(Exception e) {
         log.error("认证失败: {}", e.getMessage());
-        return Result.fail(CodeStatus.PARAM_ERROR, "用户名或密码错误");
+        return Result.fail(CodeStatus.LOGIN_FAILED);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -68,8 +70,8 @@ public class GlobalExceptionHandler {
         return Result.fail(CodeStatus.SERVER_ERROR, "权限不足，请联系管理员");
     }
 
-    @ExceptionHandler(org.springframework.data.redis.RedisConnectionFailureException.class)
-    public Object handleRedisDown(org.springframework.data.redis.RedisConnectionFailureException e) {
+    @ExceptionHandler({RedisConnectionFailureException.class, RedisSystemException.class})
+    public Result<String> handleRedisDown(org.springframework.data.redis.RedisConnectionFailureException e) {
         log.error("[REDIS][DOWN] {}", e.getMessage());
         return Result.fail(CodeStatus.TOO_MANY_REQUESTS);
     }

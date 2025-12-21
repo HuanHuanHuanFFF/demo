@@ -23,10 +23,9 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-    private static final int MAX_REQ_PER_MIN = 5;
+    private static final int MAX_REQ_PER_MIN = 5;   // 每分钟最大登录请求数
     private static final long WINDOW_TTL_SECONDS = 60L;
     private static final String KEY_PREFIX = "rl:login:ip:";
-
     private static final DefaultRedisScript<Long> INCR_EXPIRE_SCRIPT = new DefaultRedisScript<>(
             """
                     local c = redis.call('INCR',KEYS[1])
@@ -48,18 +47,13 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         String ip = IpUtils.getClientIp(request);
         String minute = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
         String k = KEY_PREFIX + ip + ":" + minute;
-        Long cnt;
-        try {
-            cnt = stringRedisTemplate.execute(
-                    INCR_EXPIRE_SCRIPT,
-                    Collections.singletonList(k),
-                    String.valueOf(WINDOW_TTL_SECONDS)
-            );
-        } catch (Exception e) {
-            log.error("[RATE_LIMIT][DEGRADED] redis unavailable, allow login. err={}", e.getMessage());
-            filterChain.doFilter(request, response);
-            return;
-        }
+
+        Long cnt = stringRedisTemplate.execute(
+                INCR_EXPIRE_SCRIPT,
+                Collections.singletonList(k),
+                String.valueOf(WINDOW_TTL_SECONDS)
+        );
+
         if (cnt != null && cnt > MAX_REQ_PER_MIN) {
             response.setStatus(429);
             response.setContentType("application/json;charset=UTF-8");

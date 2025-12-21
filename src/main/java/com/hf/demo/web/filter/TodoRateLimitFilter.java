@@ -50,19 +50,12 @@ public class TodoRateLimitFilter extends OncePerRequestFilter {
         String ip = IpUtils.getClientIp(request);
         String minute = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
         String k = KEY_PREFIX + ip + ":" + minute;
-        Long cnt;
-        try {
-            // 一次执行：原子 INCR + EXPIRE(70s)
-            cnt = stringRedisTemplate.execute(
-                    INCR_EXPIRE_SCRIPT,
-                    Collections.singletonList(k),
-                    String.valueOf(WINDOW_TTL_SECONDS) // ARGV[1]
-            );
-        } catch (Exception e) {
-            log.error("[RATE_LIMIT][DEGRADED] redis unavailable, allow request todos. err={}", e.getMessage());
-            filterChain.doFilter(request, response);
-            return;
-        }
+        Long cnt = stringRedisTemplate.execute(
+                INCR_EXPIRE_SCRIPT,
+                Collections.singletonList(k),
+                String.valueOf(WINDOW_TTL_SECONDS) // ARGV[1]
+        );
+
         if (cnt != null && cnt > MAX_REQUESTS_PER_MINUTE) {
             response.setStatus(429);
             response.setContentType("application/json;charset=UTF-8");
