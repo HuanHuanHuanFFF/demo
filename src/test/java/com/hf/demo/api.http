@@ -39,7 +39,7 @@ Accept: application/json
 http://localhost:8080/redis/ping
 
 ###
-GET http://localhost:8080/todos/11
+GET http://localhost:8080/todos/1
 
 
 ###
@@ -78,8 +78,6 @@ Content-Type: application/json
   "version": 0
 }
 
-###
-GET http://localhost:8080/todos/3
 
 ###
 PUT http://localhost:8080/todos/1
@@ -111,6 +109,7 @@ Content-Type: application/json
 ### 1. 登录成功测试 (验证正常逻辑)
 POST http://localhost:8080/auth/login
 Content-Type: application/json
+X-Device-Id: {{deviceId}}
 
 {
   "username": "admin1",
@@ -135,12 +134,15 @@ Authorization: Bearer {{accessToken}}
 
 ### 1) Refresh：用 refreshToken 换新 accessToken
 @host = http://localhost:8080
-@accessToken = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbjEiLCJpYXQiOjE3NjYyNTg2NTUsInRva2VuX3R5cGUiOiJhY2Nlc3MiLCJhdXRoIjpbInRvZG86cmVhZCIsInRvZG86d3JpdGUiXSwiZXhwIjoxNzY2MjU5NTU1fQ.M2CVx2OeCqc4XeMD0lIjitjfGzZcxxYmVJlaHIppVU4
+@accessToken = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbjEiLCJpYXQiOjE3NjY3NzE5NDAsInRva2VuX3R5cGUiOiJhY2Nlc3MiLCJhdXRoIjpbInRvZG86cmVhZCIsInRvZG86d3JpdGUiXSwiZXhwIjoxNzY2NzcyODQwfQ.Rcg1zB403WeDEzaTeaESihPn98JKVyFF4AYUusrQf4U
 
-@refreshToken = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbjEiLCJqdGkiOiJhNmFlNGJhNy0zZTdhLTQ2NWYtOWZjZS1mZjYxNmNlMGNkNmYiLCJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImlhdCI6MTc2NjI1ODY1NSwiZXhwIjoxNzY3NDY4MjU1fQ.sXkyZps7QEVEena8UsXp1bNCoJ6UFeSVnCaped-DwiA
+@refreshToken = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbjEiLCJqdGkiOiJmYmE1ZjAyOS1jODJjLTRmZTUtOTUxNS05NzVjMmYzYjBjYjIiLCJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImlhdCI6MTc2Njc3MTk0MCwiZXhwIjoxNzY3OTgxNTQwfQ.ML-mJ1-bsaZjguu7sGj1BaWRvba0XtiIvysDASoznnA
+
+@deviceId = 5c7135af-5e5f-46bf-97ae-a419708edb6e
 
 POST {{host}}/auth/refresh
 Content-Type: application/json
+X-Device-Id: {{deviceId}}
 
 {
   "refreshToken": "{{refreshToken}}"
@@ -149,7 +151,16 @@ Content-Type: application/json
 ### 2) Logout：撤销 refreshToken（删 Redis refresh:<uuid>）
 POST {{host}}/auth/logout
 Content-Type: application/json
+X-Device-Id: {{deviceId}}
 
 {
   "refreshToken": "{{refreshToken}}"
 }
+
+### 热点排行榜
+GET {{host}}/todos/top/10
+Authorization: Bearer {{accessToken}}
+
+###
+GET http://localhost:8080/todos/6
+Authorization: Bearer {{accessToken}}

@@ -10,7 +10,9 @@ import com.hf.demo.domain.dto.Todo;
 import com.hf.demo.domain.enums.SortDir;
 import com.hf.demo.domain.query.TodoPageQuery;
 import com.hf.demo.domain.vo.CodeStatus;
+import com.hf.demo.domain.vo.HotTodoVO;
 import com.hf.demo.exception.BizException;
+import com.hf.demo.infra.redis.RedisTodoHotStore;
 import com.hf.demo.mapper.TodoMapper;
 import com.hf.demo.service.TodoCacheAsyncService;
 import com.hf.demo.service.TodoService;
@@ -38,6 +40,9 @@ public class TodoServiceImpl implements TodoService {
 
     @Resource
     private TodoCacheAsyncService todoCacheAsyncService;
+
+    @Resource
+    private RedisTodoHotStore redisTodoHotStore;
 
     private static final String TODO_CACHE_KEY_PREFIX = "todo:byId:";
     private static final String NULL_VALUE = "NULL";
@@ -93,33 +98,41 @@ public class TodoServiceImpl implements TodoService {
     }
 
     @Override
-    public Todo getById(Long id) {
+    public Todo getById(Long id, boolean hit) {
+        Todo res = null;
+        boolean fromDB = false;
         String k = TODO_CACHE_KEY_PREFIX + id;
         String cache = stringRedisTemplate.opsForValue().get(k);
         if (cache != null) {
             log.info("CACHE_HIT: todo:{}", id);
             if (NULL_VALUE.equals(cache)) return null;
             try {
-                return objectMapper.readValue(cache, Todo.class);
+                res = objectMapper.readValue(cache, Todo.class);
             } catch (JsonProcessingException e) {
                 log.warn("id:{}命中,但序反列化失败", id);
             }
         }
 
-        log.info("CACHE_MISS: todo:{}", id);
-
-        Todo todo = todoMapper.selectById(id);
-        if (todo == null) {
+        if (res == null) {
+            log.info("CACHE_MISS: todo:{}", id);
+            res = todoMapper.selectById(id);
+            fromDB = true;
+        }
+        if (res == null) {
             stringRedisTemplate.opsForValue().set(k, NULL_VALUE, Duration.ofSeconds(NULL_CACHE_TTL_SECONDS));
             return null;
         }
-        try {
-            String v = objectMapper.writeValueAsString(todo);
-            stringRedisTemplate.opsForValue().set(k, v, Duration.ofSeconds(TODO_CACHE_TTL_SECONDS + RandomUtils.randomJitterSeconds(TODO_CACHE_JITTER_SECONDS)));
-        } catch (JsonProcessingException e) {
-            log.warn("getById中Redis缓存设置失败");
-        }
-        return todo;
+        if (fromDB)
+            try {
+                String v = objectMapper.writeValueAsString(res);
+                stringRedisTemplate.opsForValue().set(k, v, Duration.ofSeconds(TODO_CACHE_TTL_SECONDS + RandomUtils.randomJitterSeconds(TODO_CACHE_JITTER_SECONDS)));
+            } catch (JsonProcessingException e) {
+                log.warn("getById中Redis缓存设置失败");
+            }
+
+        if (hit) redisTodoHotStore.hit(id);
+
+        return res;
     }
 
     @Override
@@ -155,6 +168,16 @@ public class TodoServiceImpl implements TodoService {
             stringRedisTemplate.opsForValue().increment(TODO_LIST_VER_KEY);
         }
         return rows;
+    }
+
+    @Override
+    public List<HotTodoVO> topHotTodos(int n) {
+        return redisTodoHotStore.top(n)
+                .stream()
+                .map(x ->
+                        new HotTodoVO(getById(x.todoId(), false), x.score())
+                ).filter(vo -> vo.getTodo() != null)
+                .toList();
     }
 
     private void deleteTodoCacheByIdWithDelay(Long id) {

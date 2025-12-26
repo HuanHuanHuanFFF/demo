@@ -5,6 +5,7 @@ import com.hf.demo.domain.SysUser;
 import com.hf.demo.domain.vo.CodeStatus;
 import com.hf.demo.domain.vo.TokenVO;
 import com.hf.demo.exception.BizException;
+import com.hf.demo.infra.redis.RedisSessionStore;
 import com.hf.demo.mapper.SysUserMapper;
 import com.hf.demo.security.guard.LoginFailGuard;
 import com.hf.demo.security.jwt.JwtUtils;
@@ -48,11 +49,24 @@ public class AuthService {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private RedisSessionStore redisSessionStore;
+
     @Value("${jwt.refresh-expiration-ms}")
     private long refreshExpirationMs;
 
     @Value("${jwt.refresh-key-prefix}")
     private String refreshKeyPrefix;
+
+    private static final DefaultRedisScript<Long> REFRESH_CONSUME_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('EXISTS', KEYS[1]) == 1 then " +
+                    "  redis.call('DEL', KEYS[1]); " +
+                    "  return 1; " +
+                    "else " +
+                    "  return 0; " +
+                    "end",
+            Long.class
+    );
 
     public void register(String username, String password) {
         // 1. 检查用户名是否已存在 (防止重复注册报错)
@@ -71,7 +85,7 @@ public class AuthService {
         userMapper.insert(user);
     }
 
-    public TokenVO login(String username, String password) {
+    public TokenVO login(String sid, String username, String password) {
         // 这一步会自动调用 UserDetailsServiceImpl.loadUserByUsername
         // 如果密码不对，这里会直接抛出 BadCredentialsException
         if (loginFailGuard.isLocked(username)) throw new BizException(CodeStatus.LOGIN_FAILED);
@@ -85,26 +99,33 @@ public class AuthService {
             Long failCnt = loginFailGuard.onFail(username);
             throw new BizException(CodeStatus.LOGIN_FAILED);
         }
+
+        // 储存会话到Redis
+        redisSessionStore.upsertOnLogin(username, sid, System.currentTimeMillis());
+
+        // 消除失败次数
         loginFailGuard.onSuccess(username);
+
+        // 设置token权限,签发token
         List<String> authCodes = authenticate
                 .getAuthorities()
                 .stream()
                 .map(GrantedAuthority::getAuthority)
                 .toList();
-        return generateTokenVO(authenticate.getName(), authCodes);
+        return generateTokenVO(authenticate.getName(), authCodes, sid);
     }
 
-
-    public TokenVO refresh(String refreshToken) {
+    public TokenVO refresh(String sid, String refreshToken) {
+        // 验证token
         if (!jwtUtils.validateToken(refreshToken))
             throw new BizException(CodeStatus.UNAUTHORIZED, "refresh无效");
-
+        // 解析token
         Claims claims = jwtUtils.parseClaims(refreshToken);
         String username = jwtUtils.extractUsername(claims);
         String refreshId = jwtUtils.extractRefreshId(claims);
 
-        String key = refreshKeyPrefix + refreshId;
-
+        // 查询refreshID
+        String key = refreshKeyPrefix + refreshId + ":" + sid;
         Long consumed = stringRedisTemplate.execute(
                 REFRESH_CONSUME_SCRIPT,
                 Collections.singletonList(key)
@@ -112,17 +133,20 @@ public class AuthService {
         if (consumed == null || consumed != 1L)
             throw new BizException(CodeStatus.UNAUTHORIZED, "refresh无效");
 
-        List<String> authCodes = loadAuthCodes(username);
+        // 更新会话
+        redisSessionStore.touchOnRefresh(username, sid, System.currentTimeMillis());
 
-        return generateTokenVO(username, authCodes);
+        // 更新权限,签发token
+        List<String> authCodes = loadAuthCodes(username);
+        return generateTokenVO(username, authCodes, sid);
     }
 
-    private TokenVO generateTokenVO(String username, List<String> authCodes) {
+    private TokenVO generateTokenVO(String username, List<String> authCodes, String sid) {
         String newAccessToken = jwtUtils.generateAccessToken(username, authCodes);
         String newRefreshId = UUID.randomUUID().toString();
         String newRefreshToken = jwtUtils.generateRefreshToken(username, newRefreshId);
         stringRedisTemplate.opsForValue().set(
-                refreshKeyPrefix + newRefreshId,
+                refreshKeyPrefix + newRefreshId + ":" + sid,
                 username,
                 refreshExpirationMs,
                 TimeUnit.MILLISECONDS
@@ -130,15 +154,25 @@ public class AuthService {
         return new TokenVO(newAccessToken, newRefreshToken);
     }
 
-    private static final DefaultRedisScript<Long> REFRESH_CONSUME_SCRIPT = new DefaultRedisScript<>(
-            "if redis.call('EXISTS', KEYS[1]) == 1 then " +
-                    "  redis.call('DEL', KEYS[1]); " +
-                    "  return 1; " +
-                    "else " +
-                    "  return 0; " +
-                    "end",
-            Long.class
-    );
+    public void logout(String sid, String refreshToken) {
+        if (!jwtUtils.validateToken(refreshToken)) return;
+
+        // 解析token
+        Claims claims = jwtUtils.parseClaims(refreshToken);
+        String username = jwtUtils.extractUsername(claims);
+        String refreshId = jwtUtils.extractRefreshId(claims);
+
+        // 查询refreshID
+        String key = refreshKeyPrefix + refreshId + ":" + sid;
+        Long consumed = stringRedisTemplate.execute(
+                REFRESH_CONSUME_SCRIPT,
+                Collections.singletonList(key)
+        );
+        if (consumed == null || consumed != 1L)
+            return;
+
+        redisSessionStore.deleteOnLogout(username, sid);
+    }
 
     private List<String> loadAuthCodes(String username) {
         List<String> perms = userMapper.getPermissionsByUsername(username);
@@ -151,11 +185,5 @@ public class AuthService {
                 .filter(s -> !s.isBlank())
                 .distinct()
                 .toList();
-    }
-
-    public void logout(String refreshToken) {
-        if (!jwtUtils.validateToken(refreshToken)) return;
-        String refreshId = jwtUtils.extractRefreshId(refreshToken);
-        stringRedisTemplate.delete(refreshKeyPrefix + refreshId);
     }
 }

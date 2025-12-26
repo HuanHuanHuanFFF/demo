@@ -3,6 +3,7 @@ package com.hf.demo.service;
 import com.hf.demo.domain.dto.PageDTO;
 import com.hf.demo.domain.dto.Todo;
 import com.hf.demo.domain.query.TodoPageQuery;
+import com.hf.demo.domain.vo.HotTodoVO;
 
 import java.util.List;
 
@@ -11,7 +12,7 @@ public interface TodoService {
 
     PageDTO<Todo> pageTodos(TodoPageQuery query);
 
-    Todo getById(Long id);
+    Todo getById(Long id,boolean hit);
 
     void addTodo(Todo todo);
 
@@ -20,4 +21,6 @@ public interface TodoService {
     void deleteTodo(Long id);
 
     int deleteTodos(List<Long> ids);
+
+    List<HotTodoVO> topHotTodos(int n);
 }
